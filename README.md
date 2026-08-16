@@ -78,6 +78,11 @@ Requires Python 3.10+ and Windows (uses WASAPI loopback for system-audio capture
 python run.py
 ```
 
+Or double-click `run.bat` (creates a `.venv` and installs dependencies on
+first run if one doesn't exist yet). To launch it from the Desktop or Start
+Menu, make a shortcut pointing at `run.bat` with "Start in" set to this
+folder.
+
 - Prints the detected mic and speaker device.
 - Records until you press **Enter**.
 - Transcribes both tracks locally and writes `recordings/call_notes_<timestamp>.docx`.
