@@ -158,9 +158,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 
 - Windows-only as written (WASAPI loopback). A Mac/Linux port would swap
   the loopback capture method in `record_call.py`.
-- Speaker labels are per-audio-track ("You" vs "Them"), not true
-  voice-based diarization — fine for 1:1 calls, less precise if multiple
-  people are on the other end.
+- Speaker labels are per-audio-track ("You" vs "Them") by default, not true
+  voice-based diarization — fine for 1:1 calls. For group calls, optional
+  diarization (see below) can split "Them" into distinct speakers.
 - Summarization is extractive (it selects real sentences from the
   transcript), not abstractive — it won't paraphrase, only pick out the
   most representative lines.
@@ -168,6 +168,33 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
   speed — non-English calls won't transcribe correctly.
 - Default model is `small` for better accuracy; use `--model tiny` or
   `--model base` if you want faster turnaround at the cost of accuracy.
+
+## Optional: group-call diarization
+
+For calls with more than one person on the other end, `--diarize` splits the
+generic "Them" label into distinct speakers ("Them (SPEAKER_00)",
+"Them (SPEAKER_01)", ...) using [pyannote.audio](https://github.com/pyannote/pyannote-audio).
+This is opt-in and kept out of the default install because it pulls in
+`torch` (a large, slow download) and needs a gated model:
+
+```bash
+pip install -r requirements-diarize.txt
+```
+
+1. Accept the license for
+   [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+   on Hugging Face (needs a free account).
+2. Generate an access token at
+   [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+3. Run with `--diarize --hf-token <your token>`, or set an `HF_TOKEN`
+   environment variable and just pass `--diarize`.
+
+```bash
+python run.py --diarize --hf-token hf_xxx
+```
+
+Only the "Them" (loopback) track is diarized — your own "You" track is
+still identified via the mic, same as always.
 
 ## Consent
 
@@ -179,9 +206,9 @@ applies to you and the other party before using this on a real call.
 
 - [ ] Live/streaming transcription instead of record-then-transcribe
 - [ ] Cross-platform audio capture (macOS/Linux)
-- [ ] True voice-based diarization for group calls (would add `pyannote.audio`
-      + `torch` and require a Hugging Face token for the gated model — a
-      real dependency/privacy-story tradeoff against staying "no API keys")
+- [x] True voice-based diarization for group calls (optional, see above —
+      not verified against a real recording, since it needs your own
+      Hugging Face token for the gated model)
 - [x] Action-item extraction alongside the Key Points summary
 
 ## License

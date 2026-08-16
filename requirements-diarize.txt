@@ -1,0 +1,5 @@
+# Optional: group-call speaker diarization (see README's diarization
+# section). Pulls in torch - a large, slow install - so this is kept out of
+# requirements.txt and only needed if you pass --diarize.
+-r requirements.txt
+pyannote.audio>=3.1.0

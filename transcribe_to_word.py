@@ -15,6 +15,7 @@ from faster_whisper import WhisperModel
 
 from action_items import find_action_items
 from config import DEFAULT_MODEL_SIZE
+from diarize import Turn, apply_diarization
 from entities import extract_entities
 from redact import redact
 from summarize import extract_keywords, summarize
@@ -86,8 +87,11 @@ def _prepare_notes(
     include_topics: bool,
     include_mentions: bool,
     redact_text: bool,
+    diarization_turns: list[Turn] | None = None,
 ) -> tuple[list[LabeledSegment], list[str], list[str], dict[str, list[str]], list[tuple[str, str]]]:
     combined = merge_segments(mic_segments, speaker_segments)
+    if diarization_turns:
+        combined = apply_diarization(combined, diarization_turns)
     if redact_text:
         combined = [(s, e, speaker, redact(text), lc) for s, e, speaker, text, lc in combined]
 
@@ -125,6 +129,7 @@ def build_doc(
     include_topics: bool = True,
     include_mentions: bool = True,
     redact_text: bool = True,
+    diarization_turns: list[Turn] | None = None,
 ) -> None:
     combined, key_points, keywords, mentions, action_items = _prepare_notes(
         mic_segments,
@@ -134,6 +139,7 @@ def build_doc(
         include_topics,
         include_mentions,
         redact_text,
+        diarization_turns,
     )
 
     doc = Document()
@@ -178,6 +184,7 @@ def build_markdown(
     include_topics: bool = True,
     include_mentions: bool = True,
     redact_text: bool = True,
+    diarization_turns: list[Turn] | None = None,
 ) -> None:
     combined, key_points, keywords, mentions, action_items = _prepare_notes(
         mic_segments,
@@ -187,6 +194,7 @@ def build_markdown(
         include_topics,
         include_mentions,
         redact_text,
+        diarization_turns,
     )
 
     lines = [f"# {title}", ""]
@@ -239,6 +247,8 @@ def transcribe_call(
     redact_text: bool = True,
     initial_prompt: str | None = None,
     markdown: bool = False,
+    diarize_speakers: bool = False,
+    hf_token: str | None = None,
 ) -> None:
     model = load_model(model_size)
 
@@ -246,6 +256,19 @@ def transcribe_call(
     mic_segments = transcribe(mic_file, model, initial_prompt=initial_prompt)
     print("Transcribing the other side...")
     speaker_segments = transcribe(speaker_file, model, initial_prompt=initial_prompt)
+
+    diarization_turns = None
+    if diarize_speakers:
+        if not hf_token:
+            print("Skipping diarization: --hf-token (or HF_TOKEN env var) not set.")
+        else:
+            from diarize import diarize as run_diarization
+
+            print("Diarizing the other side (this needs pyannote.audio + torch)...")
+            try:
+                diarization_turns = run_diarization(speaker_file, hf_token)
+            except RuntimeError as exc:
+                print(f"Skipping diarization: {exc}")
 
     build_doc(
         mic_segments,
@@ -256,6 +279,7 @@ def transcribe_call(
         include_topics=include_topics,
         include_mentions=include_mentions,
         redact_text=redact_text,
+        diarization_turns=diarization_turns,
     )
     print(f"\nDone. Saved to {output_file}")
 
@@ -270,12 +294,14 @@ def transcribe_call(
             include_topics=include_topics,
             include_mentions=include_mentions,
             redact_text=redact_text,
+            diarization_turns=diarization_turns,
         )
         print(f"Also saved to {md_path}")
 
 
 def main():
     import argparse
+    import os
 
     parser = argparse.ArgumentParser(description="Transcribe a recorded call into a Word document.")
     parser.add_argument("mic_wav", help="Path to the mic recording (.wav)")
@@ -289,6 +315,15 @@ def main():
     parser.add_argument("--no-redact", action="store_true", help="Don't redact numbers that look like cards/SSNs")
     parser.add_argument("--prompt", default=None, help="Initial prompt to bias Whisper's vocabulary (names, jargon)")
     parser.add_argument("--markdown", action="store_true", help="Also write a .md version alongside the .docx")
+    parser.add_argument(
+        "--diarize",
+        action="store_true",
+        help="Split 'Them' into distinct speakers for group calls (needs "
+        "requirements-diarize.txt and --hf-token)",
+    )
+    parser.add_argument(
+        "--hf-token", default=os.environ.get("HF_TOKEN"), help="Hugging Face token for --diarize (or set HF_TOKEN)"
+    )
     args = parser.parse_args()
 
     transcribe_call(
@@ -303,6 +338,8 @@ def main():
         redact_text=not args.no_redact,
         initial_prompt=args.prompt,
         markdown=args.markdown,
+        diarize_speakers=args.diarize,
+        hf_token=args.hf_token,
     )
 
 

@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import os
 import time
 from pathlib import Path
 
@@ -33,6 +34,15 @@ def main() -> None:
     parser.add_argument("--no-redact", action="store_true", help="Don't redact numbers that look like cards/SSNs")
     parser.add_argument("--prompt", default=None, help="Initial prompt to bias Whisper's vocabulary (names, jargon)")
     parser.add_argument("--markdown", action="store_true", help="Also write a .md version alongside the .docx")
+    parser.add_argument(
+        "--diarize",
+        action="store_true",
+        help="Split 'Them' into distinct speakers for group calls (needs "
+        "requirements-diarize.txt and --hf-token)",
+    )
+    parser.add_argument(
+        "--hf-token", default=os.environ.get("HF_TOKEN"), help="Hugging Face token for --diarize (or set HF_TOKEN)"
+    )
     args = parser.parse_args()
 
     mic_file, speaker_file = record_call()
@@ -54,6 +64,8 @@ def main() -> None:
         redact_text=not args.no_redact,
         initial_prompt=args.prompt,
         markdown=args.markdown,
+        diarize_speakers=args.diarize,
+        hf_token=args.hf_token,
     )
 
 
