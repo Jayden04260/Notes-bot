@@ -14,8 +14,8 @@ import argparse
 import time
 from pathlib import Path
 
+from config import DEFAULT_MODEL_SIZE
 from record_call import record_call
-from transcribe_to_word import DEFAULT_MODEL_SIZE, transcribe_call
 
 
 def main() -> None:
@@ -34,6 +34,10 @@ def main() -> None:
     args = parser.parse_args()
 
     mic_file, speaker_file = record_call()
+
+    # Deferred: faster-whisper/scikit-learn take several seconds to import,
+    # which would otherwise delay the "press Enter to record" prompt above.
+    from transcribe_to_word import transcribe_call
 
     output_file = Path("recordings") / f"call_notes_{time.strftime('%Y%m%d_%H%M%S')}.docx"
     transcribe_call(

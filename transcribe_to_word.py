@@ -14,12 +14,9 @@ from docx import Document
 from faster_whisper import WhisperModel
 
 from action_items import find_action_items
+from config import DEFAULT_MODEL_SIZE
 from redact import redact
 from summarize import summarize
-
-# Model size options (bigger = more accurate, slower, more memory):
-#   tiny, base, small, medium, large-v3
-DEFAULT_MODEL_SIZE = "small"
 
 # Used unless the caller passes their own --prompt: nudges Whisper toward
 # treating this as clean call audio rather than e.g. music/noise.
