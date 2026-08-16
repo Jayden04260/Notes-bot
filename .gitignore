@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Recordings and generated notes are personal/call data - never commit these
+recordings/
+*.wav
+*.docx
+
+.pytest_cache/
