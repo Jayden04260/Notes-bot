@@ -152,6 +152,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 - Summarization is extractive (it selects real sentences from the
   transcript), not abstractive — it won't paraphrase, only pick out the
   most representative lines.
+- Transcription is hardcoded to English (`language="en"`) for accuracy and
+  speed — non-English calls won't transcribe correctly.
+- Default model is `small` for better accuracy; use `--model tiny` or
+  `--model base` if you want faster turnaround at the cost of accuracy.
 
 ## Consent
 

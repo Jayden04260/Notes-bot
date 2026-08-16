@@ -19,7 +19,11 @@ from summarize import summarize
 
 # Model size options (bigger = more accurate, slower, more memory):
 #   tiny, base, small, medium, large-v3
-DEFAULT_MODEL_SIZE = "tiny"
+DEFAULT_MODEL_SIZE = "small"
+
+# Used unless the caller passes their own --prompt: nudges Whisper toward
+# treating this as clean call audio rather than e.g. music/noise.
+DEFAULT_INITIAL_PROMPT = "This is a clear call transcript in English."
 
 # Segments with a high no_speech_prob or a very low avg_logprob are usually
 # Whisper hallucinating on silence/noise rather than transcribing real
@@ -38,7 +42,15 @@ def transcribe(file_path: str | Path, model: WhisperModel, initial_prompt: str |
     `initial_prompt` biases Whisper's vocabulary (e.g. names, jargon that
     tend to come up on your calls) - see faster-whisper's docs.
     """
-    segments, _ = model.transcribe(str(file_path), vad_filter=True, initial_prompt=initial_prompt)
+    segments, _ = model.transcribe(
+        str(file_path),
+        language="en",
+        beam_size=5,
+        temperature=0.0,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500),
+        initial_prompt=initial_prompt or DEFAULT_INITIAL_PROMPT,
+    )
     result = []
     for seg in segments:
         if seg.no_speech_prob > NO_SPEECH_THRESHOLD or seg.avg_logprob < MIN_AVG_LOGPROB:
