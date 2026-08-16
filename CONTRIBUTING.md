@@ -23,7 +23,8 @@ Both run in CI on every push and pull request.
 
 - `record_call.py` depends on `soundcard` and Windows WASAPI loopback, so it
   can't be unit tested directly — keep new logic that needs testing in pure
-  functions (like `merge_segments`, `format_time`, `summarize`) that don't
-  touch audio devices or the filesystem.
+  functions (like `merge_segments`, `format_time`, `summarize`,
+  `find_action_items`, `redact`) that don't touch audio devices or the
+  filesystem.
 - Keep dependencies in `requirements.txt` minimal; add dev-only tools to
   `requirements-dev.txt`.

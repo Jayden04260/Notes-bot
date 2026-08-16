@@ -27,6 +27,10 @@ def main() -> None:
         help="Whisper model size - bigger is more accurate but slower/more memory (default: %(default)s)",
     )
     parser.add_argument("--no-summary", action="store_true", help="Skip the auto-generated Key Points section")
+    parser.add_argument("--no-action-items", action="store_true", help="Skip the auto-detected Action Items section")
+    parser.add_argument("--no-redact", action="store_true", help="Don't redact numbers that look like cards/SSNs")
+    parser.add_argument("--prompt", default=None, help="Initial prompt to bias Whisper's vocabulary (names, jargon)")
+    parser.add_argument("--markdown", action="store_true", help="Also write a .md version alongside the .docx")
     args = parser.parse_args()
 
     mic_file, speaker_file = record_call()
@@ -38,6 +42,10 @@ def main() -> None:
         str(output_file),
         model_size=args.model,
         include_summary=not args.no_summary,
+        include_action_items=not args.no_action_items,
+        redact_text=not args.no_redact,
+        initial_prompt=args.prompt,
+        markdown=args.markdown,
     )
 
 

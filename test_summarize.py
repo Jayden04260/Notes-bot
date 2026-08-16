@@ -18,6 +18,20 @@ def test_summarize_respects_sentence_limit():
     assert len(result) == 3
 
 
+def test_summarize_avoids_near_duplicate_sentences():
+    sentences = [
+        "The budget for next quarter was approved by finance.",
+        "Finance approved the budget for next quarter.",
+        "The launch timeline was pushed back two weeks.",
+        "Someone mentioned lunch plans for tomorrow.",
+    ]
+    text = " ".join(sentences)
+    result = summarize(text, num_sentences=2, diversity=0.5)
+
+    # the two near-duplicate budget sentences shouldn't both be picked
+    assert not (sentences[0] in result and sentences[1] in result)
+
+
 def test_summarize_preserves_original_order():
     sentences = [
         "The budget was approved for next quarter.",

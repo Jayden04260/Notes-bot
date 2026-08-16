@@ -53,8 +53,12 @@ without needing voice-based diarization.
 ## Features
 
 - **Fully local** — speech-to-text via [faster-whisper](https://github.com/SYSTRAN/faster-whisper), summarization via scikit-learn. No API keys, no audio uploaded anywhere.
-- **Speaker-labeled, timestamped transcript** in a clean Word document.
-- **Auto-generated "Key Points" summary** using a from-scratch TextRank-style extractive summarizer (TF-IDF + sentence-similarity graph ranking) — not just a call to an LLM API.
+- **Speaker-labeled, timestamped transcript** in a clean Word document (optionally also Markdown, via `--markdown`).
+- **Auto-generated "Key Points" summary** using a from-scratch TextRank-style extractive summarizer (TF-IDF + sentence-similarity graph ranking, picked via Maximal Marginal Relevance so the summary doesn't fill up with near-duplicate lines) — not just a call to an LLM API.
+- **Auto-detected "Action Items"** — a lightweight rule-based pass flags lines that read like commitments, requests, or deadlines ("I'll...", "can you...", "by Friday").
+- **Redaction** of numbers that look like credit cards (Luhn-checked) or US SSNs, on by default.
+- **Whisper hallucination filtering** — segments with low confidence or high no-speech probability are dropped before they hit the transcript.
+- **Vocabulary biasing** via `--prompt` (faster-whisper's `initial_prompt`) for names/jargon that come up on your calls.
 - **Configurable accuracy/speed tradeoff** via `--model tiny|base|small|medium|large-v3`.
 - Unit-tested core logic, CI on every push.
 
@@ -81,8 +85,12 @@ python run.py
 Options:
 
 ```bash
-python run.py --model base      # more accurate, slower, more memory
-python run.py --no-summary      # skip the Key Points section
+python run.py --model base          # more accurate, slower, more memory
+python run.py --no-summary          # skip the Key Points section
+python run.py --no-action-items     # skip the Action Items section
+python run.py --no-redact           # don't redact card/SSN-looking numbers
+python run.py --markdown            # also write a .md alongside the .docx
+python run.py --prompt "Acme, Jordan, Q3 roadmap"   # bias Whisper's vocabulary
 ```
 
 Or run transcription on an existing pair of recordings directly:
@@ -97,6 +105,10 @@ python transcribe_to_word.py recordings/mic_x.wav recordings/speaker_x.wav -o no
 Key Points
   • The launch date was moved to the 14th because of the vendor delay.
   • Budget sign-off still needs to come from finance before Friday.
+
+Action Items
+  • Them: I'll get budget sign-off from finance by Friday.
+  • You: Can you send over the updated timeline tomorrow?
 
 Transcript
   [00:03] Them: So the main thing we need to figure out is timeline.
@@ -146,7 +158,10 @@ applies to you and the other party before using this on a real call.
 
 - [ ] Live/streaming transcription instead of record-then-transcribe
 - [ ] Cross-platform audio capture (macOS/Linux)
-- [ ] Action-item extraction alongside the Key Points summary
+- [ ] True voice-based diarization for group calls (would add `pyannote.audio`
+      + `torch` and require a Hugging Face token for the gated model — a
+      real dependency/privacy-story tradeoff against staying "no API keys")
+- [x] Action-item extraction alongside the Key Points summary
 
 ## License
 
