@@ -56,8 +56,9 @@ without needing voice-based diarization.
 - **Speaker-labeled, timestamped transcript** in a clean Word document (optionally also Markdown, via `--markdown`).
 - **Auto-generated "Key Points" summary** using a from-scratch TextRank-style extractive summarizer (TF-IDF + sentence-similarity graph ranking, picked via Maximal Marginal Relevance so the summary doesn't fill up with near-duplicate lines) — not just a call to an LLM API.
 - **Auto-detected "Action Items"** — a lightweight rule-based pass flags lines that read like commitments, requests, or deadlines ("I'll...", "can you...", "by Friday").
+- **"Topics" line and "Mentioned" section** — top TF-IDF terms for a quick scan-header, plus people/organizations/dates/places pulled out via spaCy's named-entity recognition.
 - **Redaction** of numbers that look like credit cards (Luhn-checked) or US SSNs, on by default.
-- **Whisper hallucination filtering** — segments with low confidence or high no-speech probability are dropped before they hit the transcript.
+- **Whisper hallucination filtering** — segments Whisper is essentially certain are silence/noise are dropped; segments it's merely unsure about are kept but marked *[uncertain]* so you know to double-check that line instead of silently losing it.
 - **Vocabulary biasing** via `--prompt` (faster-whisper's `initial_prompt`) for names/jargon that come up on your calls.
 - **Configurable accuracy/speed tradeoff** via `--model tiny|base|small|medium|large-v3`.
 - Unit-tested core logic, CI on every push.
@@ -68,6 +69,7 @@ without needing voice-based diarization.
 git clone https://github.com/jdtho/call-notes-bot.git
 cd call-notes-bot
 pip install -r requirements.txt
+python -m spacy download en_core_web_sm   # needed for the Mentioned section
 ```
 
 Requires Python 3.10+ and Windows (uses WASAPI loopback for system-audio capture).
@@ -93,6 +95,8 @@ Options:
 python run.py --model base          # more accurate, slower, more memory
 python run.py --no-summary          # skip the Key Points section
 python run.py --no-action-items     # skip the Action Items section
+python run.py --no-topics           # skip the Topics line
+python run.py --no-mentions         # skip the Mentioned (people/orgs/dates) section
 python run.py --no-redact           # don't redact card/SSN-looking numbers
 python run.py --markdown            # also write a .md alongside the .docx
 python run.py --prompt "Acme, Jordan, Q3 roadmap"   # bias Whisper's vocabulary
@@ -107,9 +111,16 @@ python transcribe_to_word.py recordings/mic_x.wav recordings/speaker_x.wav -o no
 ## Example output
 
 ```
+Topics: budget, timeline, vendor, sign-off, launch
+
 Key Points
   • The launch date was moved to the 14th because of the vendor delay.
   • Budget sign-off still needs to come from finance before Friday.
+
+Mentioned
+  • People: Sarah
+  • Organizations: Acme Corp
+  • Dates: Friday, the 14th
 
 Action Items
   • Them: I'll get budget sign-off from finance by Friday.
@@ -125,12 +136,13 @@ Transcript
 
 ```bash
 pip install -r requirements-dev.txt
+python -m spacy download en_core_web_sm
 pytest -v
 ```
 
 Tests cover the pure-logic pieces (segment merging, timestamp formatting,
-summarization) — the parts that don't require a live mic/speaker or a
-downloaded Whisper model, so they run fast and in CI.
+summarization, entity extraction) — the parts that don't require a live
+mic/speaker or a downloaded Whisper model, so they run fast and in CI.
 
 ## Development
 

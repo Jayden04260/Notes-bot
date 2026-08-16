@@ -1,4 +1,4 @@
-from summarize import split_sentences, summarize
+from summarize import extract_keywords, split_sentences, summarize
 
 
 def test_split_sentences_basic():
@@ -30,6 +30,27 @@ def test_summarize_avoids_near_duplicate_sentences():
 
     # the two near-duplicate budget sentences shouldn't both be picked
     assert not (sentences[0] in result and sentences[1] in result)
+
+
+def test_extract_keywords_finds_repeated_topic_terms():
+    text = (
+        "The budget for next quarter needs sign-off. "
+        "Finance is reviewing the budget this week. "
+        "Someone mentioned lunch plans for tomorrow. "
+        "The final budget number should be ready soon."
+    )
+    keywords = extract_keywords(text, num_keywords=3)
+    assert "budget" in keywords
+
+
+def test_extract_keywords_respects_limit():
+    text = " ".join(f"This is sentence number {i} about the quarterly roadmap." for i in range(10))
+    keywords = extract_keywords(text, num_keywords=3)
+    assert len(keywords) <= 3
+
+
+def test_extract_keywords_empty_text():
+    assert extract_keywords("") == []
 
 
 def test_summarize_preserves_original_order():

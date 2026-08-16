@@ -28,6 +28,8 @@ def main() -> None:
     )
     parser.add_argument("--no-summary", action="store_true", help="Skip the auto-generated Key Points section")
     parser.add_argument("--no-action-items", action="store_true", help="Skip the auto-detected Action Items section")
+    parser.add_argument("--no-topics", action="store_true", help="Skip the auto-extracted Topics line")
+    parser.add_argument("--no-mentions", action="store_true", help="Skip the auto-detected Mentioned section")
     parser.add_argument("--no-redact", action="store_true", help="Don't redact numbers that look like cards/SSNs")
     parser.add_argument("--prompt", default=None, help="Initial prompt to bias Whisper's vocabulary (names, jargon)")
     parser.add_argument("--markdown", action="store_true", help="Also write a .md version alongside the .docx")
@@ -47,6 +49,8 @@ def main() -> None:
         model_size=args.model,
         include_summary=not args.no_summary,
         include_action_items=not args.no_action_items,
+        include_topics=not args.no_topics,
+        include_mentions=not args.no_mentions,
         redact_text=not args.no_redact,
         initial_prompt=args.prompt,
         markdown=args.markdown,

@@ -63,3 +63,25 @@ def summarize(text: str, num_sentences: int = 5, diversity: float = 0.3) -> list
 
     selected.sort()  # restore original chronological order
     return [sentences[i] for i in selected]
+
+
+def extract_keywords(text: str, num_keywords: int = 8) -> list[str]:
+    """
+    Return up to `num_keywords` terms with the highest aggregate TF-IDF
+    weight across the transcript - a cheap "what was this call about" topic
+    list, reusing the same vectorizer approach as summarize().
+    """
+    sentences = split_sentences(text)
+    if not sentences:
+        return []
+
+    try:
+        vectorizer = TfidfVectorizer(stop_words="english")
+        tfidf = vectorizer.fit_transform(sentences)
+    except ValueError:
+        return []
+
+    scores = tfidf.sum(axis=0).tolist()[0]
+    terms = vectorizer.get_feature_names_out()
+    ranked = sorted(zip(scores, terms), reverse=True)
+    return [term for score, term in ranked[:num_keywords] if score > 0]

@@ -10,8 +10,8 @@ def test_format_time_over_a_minute():
 
 
 def test_merge_segments_chronological_order():
-    mic = [(2.0, 3.0, "I think so"), (0.0, 1.0, "Hello")]
-    speaker = [(1.0, 2.0, "Hi there")]
+    mic = [(2.0, 3.0, "I think so", False), (0.0, 1.0, "Hello", False)]
+    speaker = [(1.0, 2.0, "Hi there", False)]
 
     merged = merge_segments(mic, speaker)
 
@@ -20,10 +20,20 @@ def test_merge_segments_chronological_order():
 
 
 def test_merge_segments_drops_empty_text():
-    mic = [(0.0, 1.0, ""), (1.0, 2.0, "Real text")]
-    speaker = [(0.5, 1.5, "   ")]
+    mic = [(0.0, 1.0, "", False), (1.0, 2.0, "Real text", False)]
+    speaker = [(0.5, 1.5, "   ", False)]
 
     merged = merge_segments(mic, speaker)
 
     assert len(merged) == 1
     assert merged[0][3] == "Real text"
+
+
+def test_merge_segments_preserves_low_confidence_flag():
+    mic = [(0.0, 1.0, "Not sure about this", True)]
+    speaker = [(1.0, 2.0, "This one is clear", False)]
+
+    merged = merge_segments(mic, speaker)
+
+    assert merged[0][4] is True
+    assert merged[1][4] is False

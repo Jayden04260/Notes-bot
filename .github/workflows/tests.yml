@@ -40,7 +40,8 @@ jobs:
           # server to import, which isn't available on CI runners, and the
           # tests only exercise the pure-logic modules (record_call.py,
           # which depends on it, has no unit tests).
-          pip install numpy scikit-learn python-docx faster-whisper pytest
+          pip install numpy scikit-learn python-docx faster-whisper spacy pytest
+          python -m spacy download en_core_web_sm
 
       - name: Run tests
         run: pytest -v
