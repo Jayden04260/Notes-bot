@@ -43,6 +43,19 @@ def main() -> None:
     parser.add_argument(
         "--hf-token", default=os.environ.get("HF_TOKEN"), help="Hugging Face token for --diarize (or set HF_TOKEN)"
     )
+    parser.add_argument(
+        "--translate",
+        default=None,
+        metavar="LANG",
+        help="Translate the transcript to this language code (e.g. 'es'). Needs "
+        "requirements-translate.txt and internet access at translate time.",
+    )
+    parser.add_argument(
+        "--translate-from",
+        default="auto",
+        metavar="LANG",
+        help="Source language code for --translate (default: auto-detect)",
+    )
     args = parser.parse_args()
 
     mic_file, speaker_file = record_call()
@@ -66,6 +79,8 @@ def main() -> None:
         markdown=args.markdown,
         diarize_speakers=args.diarize,
         hf_token=args.hf_token,
+        translate_to=args.translate,
+        translate_from=args.translate_from,
     )
 
 

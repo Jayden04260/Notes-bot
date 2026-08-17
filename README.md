@@ -7,7 +7,7 @@ your machine.
 
 ![Tests](https://github.com/jdtho/call-notes-bot/actions/workflows/tests.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey)
 
 ## Why
 
@@ -61,6 +61,7 @@ without needing voice-based diarization.
 - **Whisper hallucination filtering** — segments Whisper is essentially certain are silence/noise are dropped; segments it's merely unsure about are kept but marked *[uncertain]* so you know to double-check that line instead of silently losing it.
 - **Vocabulary biasing** via `--prompt` (faster-whisper's `initial_prompt`) for names/jargon that come up on your calls.
 - **Configurable accuracy/speed tradeoff** via `--model tiny|base|small|medium|large-v3`.
+- **Optional transcript translation** to (or from) any language Google Translate supports, via `--translate`.
 - Unit-tested core logic, CI on every push.
 
 ## Install
@@ -80,10 +81,10 @@ Requires Python 3.10+ and Windows (uses WASAPI loopback for system-audio capture
 python run.py
 ```
 
-Or double-click `run.bat` (creates a `.venv` and installs dependencies on
-first run if one doesn't exist yet). To launch it from the Desktop or Start
-Menu, make a shortcut pointing at `run.bat` with "Start in" set to this
-folder.
+Or double-click `run.bat` (creates a `.venv` and installs dependencies,
+including the optional translation dependency, on first run if one doesn't
+exist yet). To launch it from the Desktop or Start Menu, make a shortcut
+pointing at `run.bat` with "Start in" set to this folder.
 
 - Prints the detected mic and speaker device.
 - Records until you press **Enter**.
@@ -100,6 +101,7 @@ python run.py --no-mentions         # skip the Mentioned (people/orgs/dates) sec
 python run.py --no-redact           # don't redact card/SSN-looking numbers
 python run.py --markdown            # also write a .md alongside the .docx
 python run.py --prompt "Acme, Jordan, Q3 roadmap"   # bias Whisper's vocabulary
+python run.py --translate es                        # translate the transcript to Spanish
 ```
 
 Or run transcription on an existing pair of recordings directly:
@@ -196,6 +198,29 @@ python run.py --diarize --hf-token hf_xxx
 Only the "Them" (loopback) track is diarized — your own "You" track is
 still identified via the mic, same as always.
 
+## Optional: transcript translation
+
+`--translate <lang>` translates the displayed transcript into another
+language after everything else has been generated — Key Points, Topics,
+Mentioned, and Action Items are still computed from the original-language
+text, since the summarizer/entity-extraction/action-item logic is
+English-tuned. It needs internet access at translate time. `run.bat`
+installs the dependency for you automatically; if you're running
+`python run.py` directly instead, install it once with:
+
+```bash
+pip install -r requirements-translate.txt
+```
+
+```bash
+python run.py --translate es                        # -> Spanish, auto-detected source
+python run.py --translate en --translate-from es     # Spanish call -> English transcript
+```
+
+Uses [deep-translator](https://github.com/nidhaloff/deep-translator)'s free
+Google Translate backend. If a line fails to translate (e.g. no network),
+it's kept in the original language rather than dropped.
+
 ## Consent
 
 Recording calls has legal requirements in many places — some jurisdictions
@@ -210,7 +235,10 @@ applies to you and the other party before using this on a real call.
       not verified against a real recording, since it needs your own
       Hugging Face token for the gated model)
 - [x] Action-item extraction alongside the Key Points summary
+- [x] Optional transcript translation (see above)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+All Rights Reserved — this repository is public for portfolio/demonstration
+purposes only; no reuse, modification, or redistribution is licensed. See
+[LICENSE](LICENSE).

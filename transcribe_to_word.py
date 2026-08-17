@@ -88,6 +88,8 @@ def _prepare_notes(
     include_mentions: bool,
     redact_text: bool,
     diarization_turns: list[Turn] | None = None,
+    translate_to: str | None = None,
+    translate_from: str = "auto",
 ) -> tuple[list[LabeledSegment], list[str], list[str], dict[str, list[str]], list[tuple[str, str]]]:
     combined = merge_segments(mic_segments, speaker_segments)
     if diarization_turns:
@@ -116,6 +118,19 @@ def _prepare_notes(
     if include_action_items and combined:
         action_items = find_action_items([(row[2], row[3]) for row in combined])
 
+    # Translation is applied last, to the displayed transcript only - Key
+    # Points/Topics/Mentioned/Action Items above are computed from the
+    # original-language text since summarize.py/entities.py/action_items.py
+    # are English-tuned.
+    if translate_to and combined:
+        from translate import translate_text
+
+        print(f"Translating transcript to '{translate_to}'...")
+        combined = [
+            (s, e, speaker, translate_text(text, translate_to, translate_from), lc)
+            for s, e, speaker, text, lc in combined
+        ]
+
     return combined, key_points, keywords, mentions, action_items
 
 
@@ -130,6 +145,8 @@ def build_doc(
     include_mentions: bool = True,
     redact_text: bool = True,
     diarization_turns: list[Turn] | None = None,
+    translate_to: str | None = None,
+    translate_from: str = "auto",
 ) -> None:
     combined, key_points, keywords, mentions, action_items = _prepare_notes(
         mic_segments,
@@ -140,6 +157,8 @@ def build_doc(
         include_mentions,
         redact_text,
         diarization_turns,
+        translate_to,
+        translate_from,
     )
 
     doc = Document()
@@ -185,6 +204,8 @@ def build_markdown(
     include_mentions: bool = True,
     redact_text: bool = True,
     diarization_turns: list[Turn] | None = None,
+    translate_to: str | None = None,
+    translate_from: str = "auto",
 ) -> None:
     combined, key_points, keywords, mentions, action_items = _prepare_notes(
         mic_segments,
@@ -195,6 +216,8 @@ def build_markdown(
         include_mentions,
         redact_text,
         diarization_turns,
+        translate_to,
+        translate_from,
     )
 
     lines = [f"# {title}", ""]
@@ -249,6 +272,8 @@ def transcribe_call(
     markdown: bool = False,
     diarize_speakers: bool = False,
     hf_token: str | None = None,
+    translate_to: str | None = None,
+    translate_from: str = "auto",
 ) -> None:
     model = load_model(model_size)
 
@@ -280,6 +305,8 @@ def transcribe_call(
         include_mentions=include_mentions,
         redact_text=redact_text,
         diarization_turns=diarization_turns,
+        translate_to=translate_to,
+        translate_from=translate_from,
     )
     print(f"\nDone. Saved to {output_file}")
 
@@ -295,6 +322,8 @@ def transcribe_call(
             include_mentions=include_mentions,
             redact_text=redact_text,
             diarization_turns=diarization_turns,
+            translate_to=translate_to,
+            translate_from=translate_from,
         )
         print(f"Also saved to {md_path}")
 
@@ -324,6 +353,19 @@ def main():
     parser.add_argument(
         "--hf-token", default=os.environ.get("HF_TOKEN"), help="Hugging Face token for --diarize (or set HF_TOKEN)"
     )
+    parser.add_argument(
+        "--translate",
+        default=None,
+        metavar="LANG",
+        help="Translate the transcript to this language code (e.g. 'es'). Needs "
+        "requirements-translate.txt and internet access at translate time.",
+    )
+    parser.add_argument(
+        "--translate-from",
+        default="auto",
+        metavar="LANG",
+        help="Source language code for --translate (default: auto-detect)",
+    )
     args = parser.parse_args()
 
     transcribe_call(
@@ -340,6 +382,8 @@ def main():
         markdown=args.markdown,
         diarize_speakers=args.diarize,
         hf_token=args.hf_token,
+        translate_to=args.translate,
+        translate_from=args.translate_from,
     )
 
 

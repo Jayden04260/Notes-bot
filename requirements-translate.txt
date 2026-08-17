@@ -1,0 +1,6 @@
+# Optional: transcript translation (see README's translation section).
+# Uses deep-translator's free Google Translate backend - needs internet
+# access at translate time - so this is kept out of requirements.txt and
+# only needed if you pass --translate.
+-r requirements.txt
+deep-translator>=1.11.4
