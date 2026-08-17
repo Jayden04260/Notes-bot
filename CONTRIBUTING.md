@@ -3,8 +3,8 @@
 ## Setup
 
 ```bash
-git clone https://github.com/jdtho/call-notes-bot.git
-cd call-notes-bot
+git clone https://github.com/Jayden04260/Notes-bot.git
+cd Notes-bot
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-dev.txt

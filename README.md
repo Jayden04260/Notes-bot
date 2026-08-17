@@ -5,7 +5,7 @@ Whisper, and get a speaker-labeled, timestamped Word document with an
 auto-generated summary — no cloud transcription service, no data leaving
 your machine.
 
-![Tests](https://github.com/jdtho/call-notes-bot/actions/workflows/tests.yml/badge.svg)
+![Tests](https://github.com/Jayden04260/Notes-bot/actions/workflows/tests.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey)
 
@@ -69,8 +69,8 @@ without needing voice-based diarization.
 ## Install
 
 ```bash
-git clone https://github.com/jdtho/call-notes-bot.git
-cd call-notes-bot
+git clone https://github.com/Jayden04260/Notes-bot.git
+cd Notes-bot
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm   # needed for the Mentioned section
 ```
