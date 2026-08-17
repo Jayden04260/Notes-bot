@@ -57,6 +57,8 @@ without needing voice-based diarization.
 - **Auto-generated "Key Points" summary** using a from-scratch TextRank-style extractive summarizer (TF-IDF + sentence-similarity graph ranking, picked via Maximal Marginal Relevance so the summary doesn't fill up with near-duplicate lines) — not just a call to an LLM API.
 - **Auto-detected "Action Items"** — a lightweight rule-based pass flags lines that read like commitments, requests, or deadlines ("I'll...", "can you...", "by Friday").
 - **"Topics" line and "Mentioned" section** — top TF-IDF terms for a quick scan-header, plus people/organizations/dates/places pulled out via spaCy's named-entity recognition.
+- **"Numbers Mentioned" table** — money amounts and percentages pulled out via regex into a table (value, type, speaker, context), so figures don't get buried in the transcript.
+- **"Tone" summary and "Tense Moments"** — a per-speaker sentiment read (Positive/Neutral/Negative) via [VADER](https://github.com/cjhutto/vaderSentiment), plus the most negative-scoring lines surfaced separately. Lexicon-based and English-tuned, so treat it as a rough pointer to skim, not a verdict — short informal lines and sarcasm can mis-score.
 - **Redaction** of numbers that look like credit cards (Luhn-checked) or US SSNs, on by default.
 - **Whisper hallucination filtering** — segments Whisper is essentially certain are silence/noise are dropped; segments it's merely unsure about are kept but marked *[uncertain]* so you know to double-check that line instead of silently losing it.
 - **Vocabulary biasing** via `--prompt` (faster-whisper's `initial_prompt`) for names/jargon that come up on your calls.
@@ -98,6 +100,8 @@ python run.py --no-summary          # skip the Key Points section
 python run.py --no-action-items     # skip the Action Items section
 python run.py --no-topics           # skip the Topics line
 python run.py --no-mentions         # skip the Mentioned (people/orgs/dates) section
+python run.py --no-numbers          # skip the Numbers Mentioned (money/percentages) table
+python run.py --no-sentiment        # skip the Tone summary and Tense Moments section
 python run.py --no-redact           # don't redact card/SSN-looking numbers
 python run.py --markdown            # also write a .md alongside the .docx
 python run.py --prompt "Acme, Jordan, Q3 roadmap"   # bias Whisper's vocabulary
@@ -114,6 +118,7 @@ python transcribe_to_word.py recordings/mic_x.wav recordings/speaker_x.wav -o no
 
 ```
 Topics: budget, timeline, vendor, sign-off, launch
+Tone: Them — Negative, You — Neutral
 
 Key Points
   • The launch date was moved to the 14th because of the vendor delay.
@@ -123,6 +128,15 @@ Mentioned
   • People: Sarah
   • Organizations: Acme Corp
   • Dates: Friday, the 14th
+
+Numbers Mentioned
+  | Value  | Type       | Speaker | Context                                  |
+  | ------ | ---------- | ------- | ----------------------------------------- |
+  | $12,000| Money      | Them    | The budget's capped at $12,000 for this.  |
+  | 15%    | Percentage | You     | We're already 15% over on the timeline.   |
+
+Tense Moments
+  • Them: This budget cut is completely unacceptable and honestly infuriating.
 
 Action Items
   • Them: I'll get budget sign-off from finance by Friday.
@@ -143,8 +157,9 @@ pytest -v
 ```
 
 Tests cover the pure-logic pieces (segment merging, timestamp formatting,
-summarization, entity extraction) — the parts that don't require a live
-mic/speaker or a downloaded Whisper model, so they run fast and in CI.
+summarization, entity extraction, numeric mention extraction, sentiment
+scoring) — the parts that don't require a live mic/speaker or a downloaded
+Whisper model, so they run fast and in CI.
 
 ## Development
 
@@ -202,9 +217,10 @@ still identified via the mic, same as always.
 
 `--translate <lang>` translates the displayed transcript into another
 language after everything else has been generated — Key Points, Topics,
-Mentioned, and Action Items are still computed from the original-language
-text, since the summarizer/entity-extraction/action-item logic is
-English-tuned. It needs internet access at translate time. `run.bat`
+Mentioned, Numbers Mentioned, Tone/Tense Moments, and Action Items are still
+computed from the original-language text, since the summarizer/entity-
+extraction/numeric-mentions/sentiment/action-item logic is English-tuned.
+It needs internet access at translate time. `run.bat`
 installs the dependency for you automatically; if you're running
 `python run.py` directly instead, install it once with:
 

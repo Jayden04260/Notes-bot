@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -31,6 +32,12 @@ def main() -> None:
     parser.add_argument("--no-action-items", action="store_true", help="Skip the auto-detected Action Items section")
     parser.add_argument("--no-topics", action="store_true", help="Skip the auto-extracted Topics line")
     parser.add_argument("--no-mentions", action="store_true", help="Skip the auto-detected Mentioned section")
+    parser.add_argument(
+        "--no-numbers", action="store_true", help="Skip the auto-detected Numbers Mentioned table"
+    )
+    parser.add_argument(
+        "--no-sentiment", action="store_true", help="Skip the Tone summary and Tense Moments section"
+    )
     parser.add_argument("--no-redact", action="store_true", help="Don't redact numbers that look like cards/SSNs")
     parser.add_argument("--prompt", default=None, help="Initial prompt to bias Whisper's vocabulary (names, jargon)")
     parser.add_argument("--markdown", action="store_true", help="Also write a .md version alongside the .docx")
@@ -48,7 +55,8 @@ def main() -> None:
         default=None,
         metavar="LANG",
         help="Translate the transcript to this language code (e.g. 'es'). Needs "
-        "requirements-translate.txt and internet access at translate time.",
+        "requirements-translate.txt and internet access at translate time. "
+        "Skips the interactive translate prompt if set.",
     )
     parser.add_argument(
         "--translate-from",
@@ -57,6 +65,25 @@ def main() -> None:
         help="Source language code for --translate (default: auto-detect)",
     )
     args = parser.parse_args()
+
+    print(
+        "\nReminder: recording a call may require the other party's consent "
+        "under wiretapping/recording laws in your state or country. It's "
+        "your responsibility to check the rules that apply to you and get "
+        "consent before you record.\n"
+    )
+    consent = input("Continue? [y/N]: ").strip().lower()
+    if consent not in ("y", "yes"):
+        print("Aborted.")
+        sys.exit(0)
+
+    translate_to = args.translate
+    if translate_to is None:
+        choice = input(
+            "Translate the transcript once it's recorded? Enter a language code "
+            "(e.g. 'es', 'fr'), or press Enter to skip: "
+        ).strip()
+        translate_to = choice or None
 
     mic_file, speaker_file = record_call()
 
@@ -74,12 +101,14 @@ def main() -> None:
         include_action_items=not args.no_action_items,
         include_topics=not args.no_topics,
         include_mentions=not args.no_mentions,
+        include_numbers=not args.no_numbers,
+        include_sentiment=not args.no_sentiment,
         redact_text=not args.no_redact,
         initial_prompt=args.prompt,
         markdown=args.markdown,
         diarize_speakers=args.diarize,
         hf_token=args.hf_token,
-        translate_to=args.translate,
+        translate_to=translate_to,
         translate_from=args.translate_from,
     )
 

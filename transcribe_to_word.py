@@ -4,7 +4,8 @@ transcribe_to_word.py
 Transcribes the mic + speaker recordings with faster-whisper (runs locally,
 no audio ever leaves your machine) and writes a timestamped, speaker-labeled
 transcript into a .docx file, with an optional auto-generated "Key Points"
-summary, "Topics", "Mentioned" (people/orgs/dates), and "Action Items"
+summary, "Topics", "Mentioned" (people/orgs/dates), "Numbers Mentioned"
+(money/percentages), "Tone" summary + "Tense Moments", and "Action Items"
 sections, and redaction of numbers that look like credit cards/SSNs.
 """
 
@@ -17,7 +18,9 @@ from action_items import find_action_items
 from config import DEFAULT_MODEL_SIZE
 from diarize import Turn, apply_diarization
 from entities import extract_entities
+from numeric_mentions import find_numbers
 from redact import redact
+from sentiment import find_tense_moments, score_lines, summarize_tone
 from summarize import extract_keywords, summarize
 
 # Used unless the caller passes their own --prompt: nudges Whisper toward
@@ -86,11 +89,22 @@ def _prepare_notes(
     include_action_items: bool,
     include_topics: bool,
     include_mentions: bool,
+    include_numbers: bool,
+    include_sentiment: bool,
     redact_text: bool,
     diarization_turns: list[Turn] | None = None,
     translate_to: str | None = None,
     translate_from: str = "auto",
-) -> tuple[list[LabeledSegment], list[str], list[str], dict[str, list[str]], list[tuple[str, str]]]:
+) -> tuple[
+    list[LabeledSegment],
+    list[str],
+    list[str],
+    dict[str, list[str]],
+    list[tuple[str, str]],
+    list[tuple[str, str, str, str]],
+    dict[str, str],
+    list[tuple[str, str]],
+]:
     combined = merge_segments(mic_segments, speaker_segments)
     if diarization_turns:
         combined = apply_diarization(combined, diarization_turns)
@@ -118,10 +132,22 @@ def _prepare_notes(
     if include_action_items and combined:
         action_items = find_action_items([(row[2], row[3]) for row in combined])
 
+    number_mentions: list[tuple[str, str, str, str]] = []
+    if include_numbers and combined:
+        number_mentions = find_numbers([(row[2], row[3]) for row in combined])
+
+    tone: dict[str, str] = {}
+    tense_moments: list[tuple[str, str]] = []
+    if include_sentiment and combined:
+        scored = score_lines([(row[2], row[3]) for row in combined])
+        tone = summarize_tone(scored)
+        tense_moments = find_tense_moments(scored)
+
     # Translation is applied last, to the displayed transcript only - Key
-    # Points/Topics/Mentioned/Action Items above are computed from the
-    # original-language text since summarize.py/entities.py/action_items.py
-    # are English-tuned.
+    # Points/Topics/Mentioned/Numbers Mentioned/Tone/Tense Moments/Action
+    # Items above are computed from the original-language text since
+    # summarize.py/entities.py/numeric_mentions.py/sentiment.py/
+    # action_items.py are English-tuned.
     if translate_to and combined:
         from translate import translate_text
 
@@ -131,7 +157,7 @@ def _prepare_notes(
             for s, e, speaker, text, lc in combined
         ]
 
-    return combined, key_points, keywords, mentions, action_items
+    return combined, key_points, keywords, mentions, action_items, number_mentions, tone, tense_moments
 
 
 def build_doc(
@@ -143,18 +169,22 @@ def build_doc(
     include_action_items: bool = True,
     include_topics: bool = True,
     include_mentions: bool = True,
+    include_numbers: bool = True,
+    include_sentiment: bool = True,
     redact_text: bool = True,
     diarization_turns: list[Turn] | None = None,
     translate_to: str | None = None,
     translate_from: str = "auto",
 ) -> None:
-    combined, key_points, keywords, mentions, action_items = _prepare_notes(
+    combined, key_points, keywords, mentions, action_items, number_mentions, tone, tense_moments = _prepare_notes(
         mic_segments,
         speaker_segments,
         include_summary,
         include_action_items,
         include_topics,
         include_mentions,
+        include_numbers,
+        include_sentiment,
         redact_text,
         diarization_turns,
         translate_to,
@@ -167,6 +197,9 @@ def build_doc(
     if keywords:
         doc.add_paragraph("Topics: " + ", ".join(keywords))
 
+    if tone:
+        doc.add_paragraph("Tone: " + ", ".join(f"{speaker} — {label}" for speaker, label in tone.items()))
+
     if key_points:
         doc.add_heading("Key Points", level=2)
         for point in key_points:
@@ -176,6 +209,21 @@ def build_doc(
         doc.add_heading("Mentioned", level=2)
         for category, names in mentions.items():
             doc.add_paragraph(f"{category}: {', '.join(names)}", style="List Bullet")
+
+    if number_mentions:
+        doc.add_heading("Numbers Mentioned", level=2)
+        table = doc.add_table(rows=1, cols=4)
+        table.style = "Light Grid Accent 1"
+        header = table.rows[0].cells
+        header[0].text, header[1].text, header[2].text, header[3].text = "Value", "Type", "Speaker", "Context"
+        for speaker, value, kind, context in number_mentions:
+            cells = table.add_row().cells
+            cells[0].text, cells[1].text, cells[2].text, cells[3].text = value, kind, speaker, context
+
+    if tense_moments:
+        doc.add_heading("Tense Moments", level=2)
+        for speaker, text in tense_moments:
+            doc.add_paragraph(f"{speaker}: {text}", style="List Bullet")
 
     if action_items:
         doc.add_heading("Action Items", level=2)
@@ -202,18 +250,22 @@ def build_markdown(
     include_action_items: bool = True,
     include_topics: bool = True,
     include_mentions: bool = True,
+    include_numbers: bool = True,
+    include_sentiment: bool = True,
     redact_text: bool = True,
     diarization_turns: list[Turn] | None = None,
     translate_to: str | None = None,
     translate_from: str = "auto",
 ) -> None:
-    combined, key_points, keywords, mentions, action_items = _prepare_notes(
+    combined, key_points, keywords, mentions, action_items, number_mentions, tone, tense_moments = _prepare_notes(
         mic_segments,
         speaker_segments,
         include_summary,
         include_action_items,
         include_topics,
         include_mentions,
+        include_numbers,
+        include_sentiment,
         redact_text,
         diarization_turns,
         translate_to,
@@ -226,6 +278,10 @@ def build_markdown(
         lines.append(f"*Topics: {', '.join(keywords)}*")
         lines.append("")
 
+    if tone:
+        lines.append("*Tone: " + ", ".join(f"{speaker} — {label}" for speaker, label in tone.items()) + "*")
+        lines.append("")
+
     if key_points:
         lines.append("## Key Points")
         lines.append("")
@@ -236,6 +292,22 @@ def build_markdown(
         lines.append("## Mentioned")
         lines.append("")
         lines += [f"- **{category}:** {', '.join(names)}" for category, names in mentions.items()]
+        lines.append("")
+
+    if number_mentions:
+        lines.append("## Numbers Mentioned")
+        lines.append("")
+        lines.append("| Value | Type | Speaker | Context |")
+        lines.append("| --- | --- | --- | --- |")
+        for speaker, value, kind, context in number_mentions:
+            escaped_context = context.replace("|", "\\|")
+            lines.append(f"| {value} | {kind} | {speaker} | {escaped_context} |")
+        lines.append("")
+
+    if tense_moments:
+        lines.append("## Tense Moments")
+        lines.append("")
+        lines += [f"- **{speaker}:** {text}" for speaker, text in tense_moments]
         lines.append("")
 
     if action_items:
@@ -267,6 +339,8 @@ def transcribe_call(
     include_action_items: bool = True,
     include_topics: bool = True,
     include_mentions: bool = True,
+    include_numbers: bool = True,
+    include_sentiment: bool = True,
     redact_text: bool = True,
     initial_prompt: str | None = None,
     markdown: bool = False,
@@ -303,6 +377,8 @@ def transcribe_call(
         include_action_items=include_action_items,
         include_topics=include_topics,
         include_mentions=include_mentions,
+        include_numbers=include_numbers,
+        include_sentiment=include_sentiment,
         redact_text=redact_text,
         diarization_turns=diarization_turns,
         translate_to=translate_to,
@@ -320,6 +396,8 @@ def transcribe_call(
             include_action_items=include_action_items,
             include_topics=include_topics,
             include_mentions=include_mentions,
+            include_numbers=include_numbers,
+            include_sentiment=include_sentiment,
             redact_text=redact_text,
             diarization_turns=diarization_turns,
             translate_to=translate_to,
@@ -341,6 +419,12 @@ def main():
     parser.add_argument("--no-action-items", action="store_true", help="Skip the auto-detected Action Items section")
     parser.add_argument("--no-topics", action="store_true", help="Skip the auto-extracted Topics line")
     parser.add_argument("--no-mentions", action="store_true", help="Skip the auto-detected Mentioned section")
+    parser.add_argument(
+        "--no-numbers", action="store_true", help="Skip the auto-detected Numbers Mentioned table"
+    )
+    parser.add_argument(
+        "--no-sentiment", action="store_true", help="Skip the Tone summary and Tense Moments section"
+    )
     parser.add_argument("--no-redact", action="store_true", help="Don't redact numbers that look like cards/SSNs")
     parser.add_argument("--prompt", default=None, help="Initial prompt to bias Whisper's vocabulary (names, jargon)")
     parser.add_argument("--markdown", action="store_true", help="Also write a .md version alongside the .docx")
@@ -377,6 +461,8 @@ def main():
         include_action_items=not args.no_action_items,
         include_topics=not args.no_topics,
         include_mentions=not args.no_mentions,
+        include_numbers=not args.no_numbers,
+        include_sentiment=not args.no_sentiment,
         redact_text=not args.no_redact,
         initial_prompt=args.prompt,
         markdown=args.markdown,

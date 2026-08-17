@@ -1,6 +1,6 @@
 All Rights Reserved
 
-Copyright (c) 2026 jdtho. All rights reserved.
+Copyright (c) 2026 Jayden Steadman-Jeffrey. All rights reserved.
 
 This repository and its contents are made publicly viewable on GitHub for
 portfolio and demonstration purposes only.
@@ -14,6 +14,10 @@ not itself grant any license to use, reproduce, or build upon it.
 To request permission for any use beyond viewing (including reuse,
 modification, or redistribution), please contact the copyright holder
 directly.
+
+Third-party dependencies retain their own separate licenses - see
+requirements.txt, requirements-diarize.txt, and requirements-translate.txt
+for the packages involved.
 
 THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
