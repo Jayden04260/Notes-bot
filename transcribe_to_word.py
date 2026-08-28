@@ -105,43 +105,72 @@ def _prepare_notes(
     dict[str, str],
     list[tuple[str, str]],
 ]:
+    # Every enrichment step below is independently guarded: a bug or a
+    # transient failure (network hiccup, a bad edge case in one analyzer)
+    # in any single one of these should cost that one section, not the
+    # whole transcript - this is exactly what let a translate/sentiment/etc.
+    # crash silently discard an entire successfully-transcribed call before
+    # (nothing had been saved to disk yet at that point in the old code).
     combined = merge_segments(mic_segments, speaker_segments)
+
     if diarization_turns:
-        combined = apply_diarization(combined, diarization_turns)
+        try:
+            combined = apply_diarization(combined, diarization_turns)
+        except Exception as exc:
+            print(f"Skipping diarization labels: {exc}")
+
     if redact_text:
-        combined = [(s, e, speaker, redact(text), lc) for s, e, speaker, text, lc in combined]
+        try:
+            combined = [(s, e, speaker, redact(text), lc) for s, e, speaker, text, lc in combined]
+        except Exception as exc:
+            print(f"Skipping redaction (numbers won't be masked): {exc}")
 
     full_text = " ".join(row[3] for row in combined)
 
     key_points = []
     if include_summary and combined:
-        key_points = summarize(full_text, num_sentences=5)
+        try:
+            key_points = summarize(full_text, num_sentences=5)
+        except Exception as exc:
+            print(f"Skipping Key Points section: {exc}")
 
     keywords = []
     if include_topics and combined:
-        keywords = extract_keywords(full_text)
+        try:
+            keywords = extract_keywords(full_text)
+        except Exception as exc:
+            print(f"Skipping Topics line: {exc}")
 
     mentions: dict[str, list[str]] = {}
     if include_mentions and combined:
         try:
             mentions = extract_entities(full_text)
-        except RuntimeError as exc:
+        except Exception as exc:
             print(f"Skipping Mentioned section: {exc}")
 
     action_items = []
     if include_action_items and combined:
-        action_items = find_action_items([(row[2], row[3]) for row in combined])
+        try:
+            action_items = find_action_items([(row[2], row[3]) for row in combined])
+        except Exception as exc:
+            print(f"Skipping Action Items section: {exc}")
 
     number_mentions: list[tuple[str, str, str, str]] = []
     if include_numbers and combined:
-        number_mentions = find_numbers([(row[2], row[3]) for row in combined])
+        try:
+            number_mentions = find_numbers([(row[2], row[3]) for row in combined])
+        except Exception as exc:
+            print(f"Skipping Numbers Mentioned section: {exc}")
 
     tone: dict[str, str] = {}
     tense_moments: list[tuple[str, str]] = []
     if include_sentiment and combined:
-        scored = score_lines([(row[2], row[3]) for row in combined])
-        tone = summarize_tone(scored)
-        tense_moments = find_tense_moments(scored)
+        try:
+            scored = score_lines([(row[2], row[3]) for row in combined])
+            tone = summarize_tone(scored)
+            tense_moments = find_tense_moments(scored)
+        except Exception as exc:
+            print(f"Skipping Tone/Tense Moments sections: {exc}")
 
     # Translation is applied last, to the displayed transcript only - Key
     # Points/Topics/Mentioned/Numbers Mentioned/Tone/Tense Moments/Action
@@ -149,13 +178,16 @@ def _prepare_notes(
     # summarize.py/entities.py/numeric_mentions.py/sentiment.py/
     # action_items.py are English-tuned.
     if translate_to and combined:
-        from translate import translate_text
+        try:
+            from translate import translate_text
 
-        print(f"Translating transcript to '{translate_to}'...")
-        combined = [
-            (s, e, speaker, translate_text(text, translate_to, translate_from), lc)
-            for s, e, speaker, text, lc in combined
-        ]
+            print(f"Translating transcript to '{translate_to}'...")
+            combined = [
+                (s, e, speaker, translate_text(text, translate_to, translate_from), lc)
+                for s, e, speaker, text, lc in combined
+            ]
+        except Exception as exc:
+            print(f"Skipping translation, keeping original language: {exc}")
 
     return combined, key_points, keywords, mentions, action_items, number_mentions, tone, tense_moments
 
