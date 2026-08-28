@@ -25,24 +25,41 @@ def record_stream(
     filename: Path,
     stop_event: threading.Event,
     start_barrier: threading.Barrier,
+    errors: list[BaseException],
     samplerate: int = SAMPLE_RATE,
 ) -> None:
+    # Runs in a background thread, so an unhandled exception here would
+    # otherwise just print to stderr and vanish - the main thread would
+    # carry on and hand back a file path that was never actually written,
+    # then fail confusingly much later inside Whisper instead of here with
+    # a clear cause. `errors` lets the main thread find out and stop.
     frames = []
     chunk = samplerate // 10  # ~100ms chunks - pulling smaller/more frequent
     # chunks keeps soundcard's internal buffer from overflowing, which is
     # what causes "data discontinuity in recording" warnings
-    with mic.recorder(samplerate=samplerate, blocksize=chunk) as rec:
-        # Opening a WASAPI device (above) has variable latency that differs
-        # between the mic and the loopback speaker device. If each thread
-        # started pulling frames as soon as its own device opened, "frame 0"
-        # in the two files wouldn't line up with the same wall-clock instant,
-        # which would throw off Whisper's timestamps and the merged
-        # transcript's ordering. Waiting here until both devices are open
-        # keeps the two tracks in sync.
-        start_barrier.wait()
-        while not stop_event.is_set():
-            data = rec.record(numframes=chunk)
-            frames.append(data)
+    try:
+        with mic.recorder(samplerate=samplerate, blocksize=chunk) as rec:
+            # Opening a WASAPI device (above) has variable latency that
+            # differs between the mic and the loopback speaker device. If
+            # each thread started pulling frames as soon as its own device
+            # opened, "frame 0" in the two files wouldn't line up with the
+            # same wall-clock instant, which would throw off Whisper's
+            # timestamps and the merged transcript's ordering. Waiting here
+            # until both devices are open keeps the two tracks in sync.
+            start_barrier.wait()
+            while not stop_event.is_set():
+                data = rec.record(numframes=chunk)
+                frames.append(data)
+    except threading.BrokenBarrierError:
+        # The other track's device failed to open before reaching this
+        # point (see the `except Exception` branch below, on that thread) -
+        # it already recorded the real error, there's nothing to add here.
+        return
+    except Exception as exc:
+        errors.append(exc)
+        stop_event.set()
+        start_barrier.abort()  # release the other thread if it's still waiting, instead of hanging forever
+        return
     if frames:
         audio = np.concatenate(frames, axis=0)
         write_wav(filename, audio, samplerate)
@@ -81,9 +98,12 @@ def record_call() -> tuple[Path, Path]:
 
     stop_event = threading.Event()
     start_barrier = threading.Barrier(2)
-    mic_thread = threading.Thread(target=record_stream, args=(default_mic, mic_file, stop_event, start_barrier))
+    errors: list[BaseException] = []
+    mic_thread = threading.Thread(
+        target=record_stream, args=(default_mic, mic_file, stop_event, start_barrier, errors)
+    )
     speaker_thread = threading.Thread(
-        target=record_stream, args=(loopback_mic, speaker_file, stop_event, start_barrier)
+        target=record_stream, args=(loopback_mic, speaker_file, stop_event, start_barrier, errors)
     )
 
     print(f"Mic: {default_mic.name}")
@@ -97,6 +117,13 @@ def record_call() -> tuple[Path, Path]:
     stop_event.set()
     mic_thread.join()
     speaker_thread.join()
+
+    if errors:
+        raise RuntimeError(f"Recording failed: {errors[0]}") from errors[0]
+    if not mic_file.exists() or not speaker_file.exists():
+        raise RuntimeError(
+            "Recording produced no audio - a device may have disconnected mid-call. Nothing was saved."
+        )
 
     print(f"\nSaved:\n  {mic_file}\n  {speaker_file}")
     return mic_file, speaker_file

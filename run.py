@@ -92,25 +92,42 @@ def main() -> None:
     from transcribe_to_word import transcribe_call
 
     output_file = Path("recordings") / f"call_notes_{time.strftime('%Y%m%d_%H%M%S')}.docx"
-    transcribe_call(
-        mic_file,
-        speaker_file,
-        str(output_file),
-        model_size=args.model,
-        include_summary=not args.no_summary,
-        include_action_items=not args.no_action_items,
-        include_topics=not args.no_topics,
-        include_mentions=not args.no_mentions,
-        include_numbers=not args.no_numbers,
-        include_sentiment=not args.no_sentiment,
-        redact_text=not args.no_redact,
-        initial_prompt=args.prompt,
-        markdown=args.markdown,
-        diarize_speakers=args.diarize,
-        hf_token=args.hf_token,
-        translate_to=translate_to,
-        translate_from=args.translate_from,
-    )
+    try:
+        transcribe_call(
+            mic_file,
+            speaker_file,
+            str(output_file),
+            model_size=args.model,
+            include_summary=not args.no_summary,
+            include_action_items=not args.no_action_items,
+            include_topics=not args.no_topics,
+            include_mentions=not args.no_mentions,
+            include_numbers=not args.no_numbers,
+            include_sentiment=not args.no_sentiment,
+            redact_text=not args.no_redact,
+            initial_prompt=args.prompt,
+            markdown=args.markdown,
+            diarize_speakers=args.diarize,
+            hf_token=args.hf_token,
+            translate_to=translate_to,
+            translate_from=args.translate_from,
+        )
+    except Exception as exc:
+        # This is the top-level safety net: _prepare_notes already isolates
+        # each enrichment step, but load_model()/transcribe()/doc.save()
+        # itself can still fail (e.g. disk full, output file open in Word,
+        # a bad first-run model download). Recording already succeeded by
+        # this point, so the one thing that must never happen is losing
+        # those files silently along with the transcription error.
+        print(
+            f"\nTranscription failed: {exc}\n"
+            "Your recording is safe though - nothing was lost:\n"
+            f"  {mic_file}\n"
+            f"  {speaker_file}\n"
+            "Retry transcription later without re-recording:\n"
+            f'  python transcribe_to_word.py "{mic_file}" "{speaker_file}" -o "{output_file}"'
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
