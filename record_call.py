@@ -9,6 +9,11 @@ Records two audio tracks at once during a call:
 Press Enter to stop recording. Files are saved under ./recordings/
 """
 
+# Keeps the `sc.Microphone` annotation below from being evaluated at import
+# time: soundcard 0.4.6 no longer exports a top-level Microphone class, and
+# evaluating the hint made `python run.py` crash before recording anything.
+from __future__ import annotations
+
 import threading
 import time
 import wave

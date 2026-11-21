@@ -67,3 +67,14 @@ def test_summarize_preserves_original_order():
     # results should appear in the same relative order as the source text
     indices = [sentences.index(s) for s in result]
     assert indices == sorted(indices)
+
+
+def test_split_sentences_keeps_titles_attached_to_names():
+    text = "Mr. Quilter is here. Dr. Smith said hello, i.e. nothing new. Thanks."
+    assert split_sentences(text) == ["Mr. Quilter is here.", "Dr. Smith said hello, i.e. nothing new.", "Thanks."]
+
+
+def test_extract_keywords_ignores_honorifics():
+    text = "Mr. Jones asked about pricing. Mr. Jones wants pricing by Friday. Mrs. Lee agreed on pricing."
+    assert "mr" not in extract_keywords(text)
+    assert "pricing" in extract_keywords(text)

@@ -21,6 +21,8 @@ from pathlib import Path
 
 Turn = tuple[float, float, str]
 
+DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
+
 
 def diarize(file_path: str | Path, hf_token: str) -> list[Turn]:
     """
@@ -34,10 +36,38 @@ def diarize(file_path: str | Path, hf_token: str) -> list[Turn]:
             "Diarization needs extra dependencies: pip install -r requirements-diarize.txt"
         ) from exc
 
-    pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=hf_token)
-    diarization = pipeline(str(file_path))
+    # pyannote.audio 4 renamed use_auth_token -> token (and from_pretrained
+    # takes no **kwargs, so the old name raises TypeError). Try the current
+    # name first so both 3.x and 4.x installs work.
+    try:
+        pipeline = Pipeline.from_pretrained(DIARIZATION_MODEL, token=hf_token)
+    except TypeError:
+        pipeline = Pipeline.from_pretrained(DIARIZATION_MODEL, use_auth_token=hf_token)
+    if pipeline is None:  # pyannote returns None (after logging) when the gated model's terms weren't accepted
+        raise RuntimeError(
+            f"Couldn't load {DIARIZATION_MODEL} - accept its terms at https://huggingface.co/{DIARIZATION_MODEL} "
+            "with the account your token belongs to."
+        )
 
-    return [(turn.start, turn.end, label) for turn, _, label in diarization.itertracks(yield_label=True)]
+    annotation = annotation_from(pipeline(str(file_path)))
+    return [(turn.start, turn.end, label) for turn, _, label in annotation.itertracks(yield_label=True)]
+
+
+def annotation_from(output):
+    """The speaker timeline from a pipeline result, across pyannote versions.
+
+    3.x returns the timeline (an Annotation) directly. 4.x returns a
+    DiarizeOutput wrapping two: `speaker_diarization`, and
+    `exclusive_speaker_diarization` - the same turns with overlapping speech
+    resolved to one speaker at a time, which pyannote provides specifically
+    for aligning with transcripts (what apply_diarization() does), so it's
+    preferred when present.
+    """
+    for attr in ("exclusive_speaker_diarization", "speaker_diarization"):
+        annotation = getattr(output, attr, None)
+        if annotation is not None:
+            return annotation
+    return output
 
 
 def closest_speaker(segment_start: float, segment_end: float, turns: list[Turn]) -> str | None:

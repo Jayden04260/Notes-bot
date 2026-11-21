@@ -43,8 +43,31 @@ def extract_entities(text: str) -> dict[str, list[str]]:
     for ent in doc.ents:
         if ent.label_ not in _KEEP_LABELS:
             continue
+        mention = clean_mention(ent.text, ent.label_)
+        if mention is None:
+            continue
         category = _LABEL_NAMES[ent.label_]
         bucket = result.setdefault(category, [])
-        if ent.text not in bucket:
-            bucket.append(ent.text)
+        if mention not in bucket:
+            bucket.append(mention)
     return result
+
+
+def clean_mention(text: str, label: str) -> str | None:
+    """Tidy one entity, or None to drop it.
+
+    - Possessives are stripped, so "Leighton's" and "Leighton" dedupe.
+    - People/organisations/places written all in lowercase are dropped:
+      Whisper capitalises real names, so a lowercase "entity" is the small
+      spaCy model mislabelling a common word - e.g. "us" tagged as a place
+      (the US) on a test call. Dates are exempt ("next friday" is a real date).
+    """
+    mention = text.strip()
+    for suffix in ("'s", "’s"):
+        if mention.endswith(suffix):
+            mention = mention[: -len(suffix)]
+    if not mention:
+        return None
+    if label != "DATE" and mention == mention.lower():
+        return None
+    return mention
