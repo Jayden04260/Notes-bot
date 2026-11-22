@@ -199,6 +199,50 @@ absolute numbers are a little pessimistic, the comparison between rows is
 what matters. Clean read speech is also easier than a real call: expect
 higher error rates on crosstalk, accents, and poor connections.
 
+**Realistic audio.** So the tests below go beyond clean read speech, scored
+with both the simple normalisation and Whisper's own English normaliser
+(which treats "Mr."/"mister" and "10"/"ten" as the same word). Numbers below
+are the Whisper-normalised WER, `large-v3-turbo` on GPU.
+
+| Test set | What it is | Old settings | **Current settings** |
+|---|---|---|---|
+| LibriSpeech sample | clean read speech | 2.9% | 2.9% |
+| AMI meetings, headset mic (300 clips) | real meetings, overlapping talk | 16.9% | 16.9% |
+| AMI meetings, room mic (300 clips) | same meetings, one distant mic | 39.4% | 37.6% |
+| **Earnings-22 (8 full calls, 3.6h)** | long real calls, non-US accents | 20.6% | **13.2%** |
+
+For reference, the old CPU default (`small`) scores 5.8% / 19.4% / 51.8% on the
+first three rows.
+
+The long calls exposed two problems with the old settings. First, the
+voice-activity filter cut out a quiet speaker: one call lost about half its
+words (54% WER, now 7%). Second, Whisper fed each window's text into the next,
+which let it derail on long calls. Turning both off made every call land
+between 7% and 15.5%. The worry with no filter is Whisper inventing text
+during silence (on a real call, each track is silent while the other person
+talks). So I blanked alternating 20-second stretches of five calls, about
+1.5h of silence, and counted the words produced in them: 13 (a few "Thank
+you"s), against ~9% more real speech recovered.
+
+**Accents** (EdAcc conversational speech; English Dialects read speech from
+UK/Irish regions):
+
+| Accent | Old settings | **Current settings** |
+|---|---|---|
+| Jamaican English (conversation) | 27.1% | **21.2%** |
+| Irish English (conversation) | 13.0% | **9.9%** |
+| Mainstream US English (conversation) | 17.2% | 17.6% |
+| Southern British English (conversation) | 17.6% | 18.2% |
+| Scottish English (conversation) | 21.6% | 22.1% |
+| Midlands (read) | 9.7% | **1.9%** |
+| Scottish (read) | 7.6% | **2.2%** |
+| Irish / Northern / Southern / Welsh (read) | 6.4 / 3.3 / 2.5 / 2.1% | 6.5 / 3.6 / 2.6 / 2.2% |
+
+Where the old settings were dropping speech, the gains are large. Elsewhere
+the two are within half a point. Jamaican English is still the hardest accent
+tested. Jamaican Patois isn't measured: there's no public, properly licensed
+recording set of spoken Patois with transcripts to test against.
+
 ```bash
 python eval_transcription.py path/to/clips --model large-v3-turbo --device cuda
 ```

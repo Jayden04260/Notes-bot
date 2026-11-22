@@ -15,10 +15,19 @@ of clean read speech - see README "How accurate is it?" for how to fetch it).
 Usage:
     python eval_transcription.py <clips_dir> [--model small] [--device auto|cpu|cuda]
 
-WER here is the standard word-level edit distance (substitutions +
-deletions + insertions) over the number of reference words, after
-lowercasing and stripping punctuation from both sides - implemented
-directly (wer() below) rather than adding a dependency for 20 lines.
+WER is the standard word-level edit distance (substitutions + deletions +
+insertions) over the number of reference words. Two versions are reported:
+
+- basic: lowercase, punctuation stripped. Counts formatting differences as
+  errors ("Mr." vs "mister", "1990" vs "nineteen ninety", "colour" vs
+  "color", fillers like "um") - pessimistic.
+- whisper-normalised: OpenAI's Whisper EnglishTextNormalizer (the
+  `whisper-normalizer` package, in requirements-dev.txt) applied to both
+  sides first - the standard way Whisper WERs are reported, so it's the one
+  to compare with published numbers.
+
+--save writes every clip's reference/hypothesis pair to a JSON file, for
+looking at what kind of errors remain.
 """
 
 import argparse
@@ -38,7 +47,15 @@ def normalize(text: str) -> list[str]:
 
 
 def word_errors(reference: list[str], hypothesis: list[str]) -> int:
-    """Levenshtein distance between two word sequences."""
+    """Levenshtein distance between two word sequences. Uses rapidfuzz (C) if
+    installed - whole-call transcripts are thousands of words, where the pure-
+    Python version below takes about a minute per call."""
+    try:
+        from rapidfuzz.distance import Levenshtein
+
+        return Levenshtein.distance(reference, hypothesis)
+    except ImportError:
+        pass
     previous = list(range(len(hypothesis) + 1))
     for i, ref_word in enumerate(reference, 1):
         current = [i] + [0] * len(hypothesis)
@@ -52,13 +69,24 @@ def word_errors(reference: list[str], hypothesis: list[str]) -> int:
     return previous[-1]
 
 
-def wer(references: list[str], hypotheses: list[str]) -> float:
+def wer(references: list[str], hypotheses: list[str], normalizer=normalize) -> float:
     errors = total = 0
     for ref, hyp in zip(references, hypotheses):
-        ref_words = normalize(ref)
-        errors += word_errors(ref_words, normalize(hyp))
+        ref_words = normalizer(ref)
+        errors += word_errors(ref_words, normalizer(hyp))
         total += len(ref_words)
     return errors / max(total, 1)
+
+
+def whisper_normalizer():
+    """Word-list normaliser using Whisper's EnglishTextNormalizer, or None if
+    the optional whisper-normalizer package isn't installed."""
+    try:
+        from whisper_normalizer.english import EnglishTextNormalizer
+    except ImportError:
+        return None
+    english = EnglishTextNormalizer()
+    return lambda text: english(text).split()
 
 
 def main() -> None:
@@ -66,6 +94,7 @@ def main() -> None:
     parser.add_argument("clips_dir", help="Folder of .wav files with a references.json")
     parser.add_argument("--model", default=DEFAULT_MODEL_SIZE)
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
+    parser.add_argument("--save", default=None, help="Write per-clip reference/hypothesis pairs to this JSON file")
     args = parser.parse_args()
 
     import wave
@@ -91,12 +120,18 @@ def main() -> None:
     hypotheses = [" ".join(seg[2] for seg in transcribe(clips_dir / name, model)) for name in names]
     elapsed = time.perf_counter() - start
 
-    score = wer([references[n] for n in names], hypotheses)
+    refs = [references[n] for n in names]
+    basic = wer(refs, hypotheses)
+    normalizer = whisper_normalizer()
+    normalized = f"{wer(refs, hypotheses, normalizer):.2%}" if normalizer else "n/a (pip install whisper-normalizer)"
     print(
         f"model={args.model} device={model.notes_bot_device} clips={len(names)} "
-        f"audio={audio_seconds / 60:.1f}min  WER={score:.2%}  "
+        f"audio={audio_seconds / 60:.1f}min  WER basic={basic:.2%} whisper-normalised={normalized}  "
         f"time={elapsed:.1f}s  speed={audio_seconds / elapsed:.1f}x real-time"
     )
+    if args.save:
+        rows = [{"clip": n, "reference": r, "hypothesis": h} for n, r, h in zip(names, refs, hypotheses)]
+        Path(args.save).write_text(json.dumps(rows, indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":

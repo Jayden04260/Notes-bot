@@ -58,8 +58,15 @@ def transcribe(
         language=None if detect else language,
         beam_size=5,
         temperature=0.0,
-        vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=500),
+        # Measured on real long calls (Earnings-22) and accented speech (EdAcc,
+        # English Dialects): the silence filter was dropping quiet speakers
+        # (one call lost half its words) and feeding each window's text into
+        # the next let Whisper derail on long calls. Turning both off cut
+        # long-call WER from 20.6% to 13.2% and Jamaican English from 27.1% to
+        # 21.2%; on a simulated two-track call it invented only 13 words in
+        # ~1.5h of silence, while recovering ~9% more real speech.
+        vad_filter=False,
+        condition_on_previous_text=False,
         initial_prompt=initial_prompt or (None if detect else DEFAULT_INITIAL_PROMPT),
     )
     if detect:
