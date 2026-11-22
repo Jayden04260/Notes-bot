@@ -23,3 +23,12 @@ def test_dedupes_repeated_mentions():
 def test_empty_text_returns_empty_dict():
     assert extract_entities("") == {}
     assert extract_entities("   ") == {}
+
+
+def test_clean_mention_strips_possessives_and_drops_lowercase_non_dates():
+    from entities import clean_mention
+
+    assert clean_mention("Frederick Leighton's", "PERSON") == "Frederick Leighton"
+    assert clean_mention("us", "GPE") is None
+    assert clean_mention("next friday", "DATE") == "next friday"
+    assert clean_mention("London", "GPE") == "London"

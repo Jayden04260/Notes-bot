@@ -16,18 +16,13 @@ import sys
 import time
 from pathlib import Path
 
-from config import DEFAULT_MODEL_SIZE
+from config import add_model_arguments
 from record_call import record_call
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Record a call and generate Word notes for it.")
-    parser.add_argument(
-        "--model",
-        default=DEFAULT_MODEL_SIZE,
-        choices=["tiny", "base", "small", "medium", "large-v3"],
-        help="Whisper model size - bigger is more accurate but slower/more memory (default: %(default)s)",
-    )
+    add_model_arguments(parser)
     parser.add_argument("--no-summary", action="store_true", help="Skip the auto-generated Key Points section")
     parser.add_argument("--no-action-items", action="store_true", help="Skip the auto-detected Action Items section")
     parser.add_argument("--no-topics", action="store_true", help="Skip the auto-extracted Topics line")
@@ -98,6 +93,8 @@ def main() -> None:
             speaker_file,
             str(output_file),
             model_size=args.model,
+            device=args.device,
+            language=args.language,
             include_summary=not args.no_summary,
             include_action_items=not args.no_action_items,
             include_topics=not args.no_topics,

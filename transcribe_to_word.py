@@ -9,13 +9,14 @@ summary, "Topics", "Mentioned" (people/orgs/dates), "Numbers Mentioned"
 sections, and redaction of numbers that look like credit cards/SSNs.
 """
 
+import os
 from pathlib import Path
 
 from docx import Document
 from faster_whisper import WhisperModel
 
 from action_items import find_action_items
-from config import DEFAULT_MODEL_SIZE
+from config import DEFAULT_MODEL_SIZE, GPU_DEFAULT_MODEL_SIZE, add_model_arguments
 from diarize import Turn, apply_diarization
 from entities import extract_entities
 from numeric_mentions import find_numbers
@@ -40,22 +41,36 @@ Segment = tuple[float, float, str, bool]
 LabeledSegment = tuple[float, float, str, str, bool]
 
 
-def transcribe(file_path: str | Path, model: WhisperModel, initial_prompt: str | None = None) -> list[Segment]:
+def transcribe(
+    file_path: str | Path, model: WhisperModel, initial_prompt: str | None = None, language: str = "en"
+) -> list[Segment]:
     """
     Run Whisper on a wav file, return a list of (start, end, text,
     low_confidence) tuples. `initial_prompt` biases Whisper's vocabulary
     (e.g. names, jargon that tend to come up on your calls) - see
-    faster-whisper's docs.
+    faster-whisper's docs. `language` is a Whisper language code, or "auto"
+    to let Whisper detect it (the English default prompt is then dropped,
+    since it would bias detection towards English).
     """
-    segments, _ = model.transcribe(
+    detect = language == "auto"
+    segments, info = model.transcribe(
         str(file_path),
-        language="en",
+        language=None if detect else language,
         beam_size=5,
         temperature=0.0,
-        vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=500),
-        initial_prompt=initial_prompt or DEFAULT_INITIAL_PROMPT,
+        # Measured on real long calls (Earnings-22) and accented speech (EdAcc,
+        # English Dialects): the silence filter was dropping quiet speakers
+        # (one call lost half its words) and feeding each window's text into
+        # the next let Whisper derail on long calls. Turning both off cut
+        # long-call WER from 20.6% to 13.2% and Jamaican English from 27.1% to
+        # 21.2%; on a simulated two-track call it invented only 13 words in
+        # ~1.5h of silence, while recovering ~9% more real speech.
+        vad_filter=False,
+        condition_on_previous_text=False,
+        initial_prompt=initial_prompt or (None if detect else DEFAULT_INITIAL_PROMPT),
     )
+    if detect:
+        print(f"  detected language: {info.language} (p={info.language_probability:.2f})")
     result = []
     for seg in segments:
         if seg.no_speech_prob > HARD_NO_SPEECH_THRESHOLD:
@@ -357,16 +372,79 @@ def build_markdown(
     Path(output_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def load_model(model_size: str = DEFAULT_MODEL_SIZE, cpu_threads: int = 4) -> WhisperModel:
-    print(f"Loading Whisper model '{model_size}' (first run downloads it, then it's cached)...")
-    return WhisperModel(model_size, device="cpu", compute_type="int8", cpu_threads=cpu_threads, num_workers=1)
+def resolve_model_size(model_size: str, device: str) -> str:
+    """"auto" picks the most accurate model the hardware runs comfortably:
+    large-v3-turbo on a GPU, small on CPU (see README "How accurate is it?")."""
+    if model_size != "auto":
+        return model_size
+    return GPU_DEFAULT_MODEL_SIZE if device == "cuda" else DEFAULT_MODEL_SIZE
+
+
+def _load_on_cpu(model_size: str) -> WhisperModel:
+    # All cores, not a fixed 4 - transcription is CPU-bound and this is the
+    # slowest step of a run on machines without a usable GPU.
+    model = WhisperModel(model_size, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4, num_workers=1)
+    model.notes_bot_device = "cpu"
+    return model
+
+
+def load_model(model_size: str = DEFAULT_MODEL_SIZE, device: str = "auto") -> WhisperModel:
+    """
+    device: "auto" (GPU if one is usable, else CPU), "cuda" or "cpu".
+    On a GPU the model runs in float16; on CPU in int8. If the GPU path
+    fails (no NVIDIA GPU, or cuBLAS/cuDNN missing - see requirements-gpu.txt)
+    this falls back to CPU with a message rather than failing the run.
+
+    faster-whisper only touches cuBLAS/cuDNN on the first real encode, not
+    at load time - so a missing library would otherwise surface mid-call.
+    A one-second probe transcription here catches that up front (and pays
+    the one-off GPU warm-up, which can be ~30s the first time on GPUs newer
+    than the installed CTranslate2 build).
+    """
+    import numpy as np
+
+    from gpu import cuda_device_count, register_cuda_dlls
+
+    try:
+        # First run downloads the model from the Hugging Face Hub. Verify
+        # TLS against the OS certificate store (what browsers use) instead of
+        # Python's bundled one, so the download also works behind antivirus
+        # or corporate proxies that re-sign HTTPS traffic. Verification
+        # stays fully on.
+        import truststore
+
+        truststore.inject_into_ssl()
+    except ImportError:
+        pass
+
+    if device == "auto":
+        device = "cuda" if cuda_device_count() > 0 else "cpu"
+    requested_size = model_size
+    model_size = resolve_model_size(requested_size, device)
+    print(f"Loading Whisper model '{model_size}' on {device} (first run downloads it, then it's cached)...")
+    if device == "cpu":
+        return _load_on_cpu(model_size)
+
+    register_cuda_dlls()
+    try:
+        model = WhisperModel(model_size, device="cuda", compute_type="float16")
+        print("Preparing the GPU (the very first run can take ~30s)...")
+        segments, _ = model.transcribe(np.zeros(16000, dtype=np.float32), language="en")
+        list(segments)
+    except Exception as exc:
+        print(f"GPU transcription unavailable ({exc}) - using CPU instead. See requirements-gpu.txt.")
+        # An automatically-chosen GPU model drops to the CPU default rather
+        # than running large-v3-turbo on CPU; an explicit choice is kept.
+        return _load_on_cpu(resolve_model_size(requested_size, "cpu"))
+    model.notes_bot_device = "cuda"
+    return model
 
 
 def transcribe_call(
     mic_file: str | Path,
     speaker_file: str | Path,
     output_file: str | Path,
-    model_size: str = DEFAULT_MODEL_SIZE,
+    model_size: str = "auto",
     include_summary: bool = True,
     include_action_items: bool = True,
     include_topics: bool = True,
@@ -376,17 +454,19 @@ def transcribe_call(
     redact_text: bool = True,
     initial_prompt: str | None = None,
     markdown: bool = False,
+    device: str = "auto",
+    language: str = "en",
     diarize_speakers: bool = False,
     hf_token: str | None = None,
     translate_to: str | None = None,
     translate_from: str = "auto",
 ) -> None:
-    model = load_model(model_size)
+    model = load_model(model_size, device=device)
 
     print("Transcribing your audio...")
-    mic_segments = transcribe(mic_file, model, initial_prompt=initial_prompt)
+    mic_segments = transcribe(mic_file, model, initial_prompt=initial_prompt, language=language)
     print("Transcribing the other side...")
-    speaker_segments = transcribe(speaker_file, model, initial_prompt=initial_prompt)
+    speaker_segments = transcribe(speaker_file, model, initial_prompt=initial_prompt, language=language)
 
     diarization_turns = None
     if diarize_speakers:
@@ -446,7 +526,7 @@ def main():
     parser.add_argument("mic_wav", help="Path to the mic recording (.wav)")
     parser.add_argument("speaker_wav", help="Path to the speaker/loopback recording (.wav)")
     parser.add_argument("-o", "--output", default="call_notes.docx", help="Output .docx path")
-    parser.add_argument("--model", default=DEFAULT_MODEL_SIZE, choices=["tiny", "base", "small", "medium", "large-v3"])
+    add_model_arguments(parser)
     parser.add_argument("--no-summary", action="store_true", help="Skip the auto-generated Key Points section")
     parser.add_argument("--no-action-items", action="store_true", help="Skip the auto-detected Action Items section")
     parser.add_argument("--no-topics", action="store_true", help="Skip the auto-extracted Topics line")
@@ -489,6 +569,8 @@ def main():
         args.speaker_wav,
         args.output,
         model_size=args.model,
+        device=args.device,
+        language=args.language,
         include_summary=not args.no_summary,
         include_action_items=not args.no_action_items,
         include_topics=not args.no_topics,

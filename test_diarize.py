@@ -33,3 +33,27 @@ def test_apply_diarization_leaves_unmatched_them_rows_unchanged():
     result = apply_diarization(combined, turns)
 
     assert result[0][2] == "Them"
+
+
+class _FakeAnnotation:
+    def __init__(self, name):
+        self.name = name
+
+
+class _FakeDiarizeOutput:  # shape of pyannote.audio 4's DiarizeOutput
+    def __init__(self):
+        self.speaker_diarization = _FakeAnnotation("overlapping")
+        self.exclusive_speaker_diarization = _FakeAnnotation("exclusive")
+
+
+def test_annotation_from_prefers_the_transcript_aligned_timeline_in_pyannote_4():
+    from diarize import annotation_from
+
+    assert annotation_from(_FakeDiarizeOutput()).name == "exclusive"
+
+
+def test_annotation_from_passes_a_pyannote_3_annotation_through():
+    from diarize import annotation_from
+
+    legacy = _FakeAnnotation("legacy")
+    assert annotation_from(legacy) is legacy

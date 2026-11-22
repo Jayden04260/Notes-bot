@@ -1,0 +1,8 @@
+# Optional: run transcription on an NVIDIA GPU (see README "GPU transcription").
+# faster-whisper's CTranslate2 backend needs cuBLAS 12 + cuDNN 9; these pip
+# packages provide them without a system-wide CUDA install (gpu.py makes
+# their DLLs findable on Windows). With a GPU, the default model becomes
+# large-v3-turbo - see README "How accurate is it?".
+-r requirements.txt
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*

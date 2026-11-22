@@ -15,13 +15,33 @@ download required.
 
 import re
 
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
+# Titles and abbreviations whose full stop doesn't end a sentence. Whisper
+# writes "Mr. Quilter", so a plain split-on-full-stop turned every titled
+# name into a bogus one-word "sentence" - which then showed up as a Key
+# Point bullet reading just "Mr.".
+_ABBREVIATIONS = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "e.g", "i.e", "approx", "no"}
+
+# Honorifics are everywhere in transcripts and say nothing about the topic
+# ("mr" was the top Topics term on a test call).
+_STOP_WORDS = list(ENGLISH_STOP_WORDS | {"mr", "mrs", "ms", "dr"})
+
 
 def split_sentences(text: str) -> list[str]:
-    return [s.strip() for s in _SENTENCE_SPLIT_RE.split(text.strip()) if s.strip()]
+    sentences: list[str] = []
+    for piece in _SENTENCE_SPLIT_RE.split(text.strip()):
+        piece = piece.strip()
+        if not piece:
+            continue
+        last_word = sentences[-1].rsplit(None, 1)[-1].rstrip(".").lower() if sentences else ""
+        if sentences and sentences[-1].endswith(".") and last_word in _ABBREVIATIONS:
+            sentences[-1] = f"{sentences[-1]} {piece}"
+        else:
+            sentences.append(piece)
+    return sentences
 
 
 def summarize(text: str, num_sentences: int = 5, diversity: float = 0.3) -> list[str]:
@@ -36,7 +56,7 @@ def summarize(text: str, num_sentences: int = 5, diversity: float = 0.3) -> list
         return sentences
 
     try:
-        vectorizer = TfidfVectorizer(stop_words="english")
+        vectorizer = TfidfVectorizer(stop_words=_STOP_WORDS)
         tfidf = vectorizer.fit_transform(sentences)
     except ValueError:
         # e.g. every "sentence" was pure stopwords/punctuation
@@ -76,7 +96,7 @@ def extract_keywords(text: str, num_keywords: int = 8) -> list[str]:
         return []
 
     try:
-        vectorizer = TfidfVectorizer(stop_words="english")
+        vectorizer = TfidfVectorizer(stop_words=_STOP_WORDS)
         tfidf = vectorizer.fit_transform(sentences)
     except ValueError:
         return []
